@@ -152,15 +152,16 @@ class ElkathermCoordinator:
     def _on_mqtt_message(self, client, userdata, msg):
         """Called when an MQTT message arrives."""
         try:
-            _LOGGER.info("MQTT message on %s: %s", msg.topic, msg.payload[:200])
+            _LOGGER.debug("MQTT message on %s: %s", msg.topic, msg.payload[:200])
             payload = json.loads(msg.payload)
             parts = msg.topic.split("/")
-            if len(parts) == 2:
-                mac = parts[0]
-                self._device_states[mac] = payload
-                self._notify_listeners(mac, payload)
+            # Handle both MAC/UUID (2 parts) and +/+/MAC/UUID (4 parts)
+            mac = parts[0] if len(parts) == 2 else parts[2]
+            self._device_states[mac] = payload
+            self._notify_listeners(mac, payload)
         except Exception as err:
             _LOGGER.warning("Failed to process MQTT message on %s: %s", msg.topic, err)
+
 
 
     def _mqtt_loop(self):
