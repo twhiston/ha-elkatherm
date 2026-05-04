@@ -1,0 +1,12 @@
+{
+  "domain": "elkatherm",
+  "name": "Elkatherm / eComfort Radiators",
+  "codeowners": ["@twhiston"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/twhiston/ha-elkatherm",
+  "integration_type": "hub",
+  "iot_class": "cloud_push",
+  "requirements": ["paho-mqtt>=2.0.0"],
+  "version": "1.0.0"
+}
