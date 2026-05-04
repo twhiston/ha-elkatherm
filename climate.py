@@ -29,7 +29,6 @@ async def async_setup_entry(
     """Set up Elkatherm climate entities."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    # Give MQTT a moment to populate initial state
     import asyncio
     await asyncio.sleep(3)
 
@@ -83,7 +82,7 @@ class ElkathermClimate(ClimateEntity):
 
     @callback
     def _handle_state_update(self, mac: str, state: dict) -> None:
-        """Handle an MQTT state update."""
+        """Handle an MQTT state update (called from event loop via call_soon_threadsafe)."""
         if mac != self._mac:
             return
 
@@ -93,18 +92,14 @@ class ElkathermClimate(ClimateEntity):
         mode = state.get("mode", HVAC_MANUAL)
         if mode == HVAC_PROGRAM:
             self._attr_hvac_mode = HVACMode.AUTO
-        elif mode == HVAC_MANUAL:
-            self._attr_hvac_mode = HVACMode.HEAT
         else:
             self._attr_hvac_mode = HVACMode.HEAT
 
-        # Target temperature depends on mode
         if mode == HVAC_PROGRAM:
             self._attr_target_temperature = state.get("programT")
         else:
             self._attr_target_temperature = state.get("manualT")
 
-        # Heating action
         heating = state.get("heating", 0)
         self._attr_hvac_action = HVACAction.HEATING if heating else HVACAction.IDLE
 
@@ -115,7 +110,7 @@ class ElkathermClimate(ClimateEntity):
         if (temperature := kwargs.get(ATTR_TEMPERATURE)) is None:
             return
 
-        temperature = round(temperature * 2) / 2  # round to 0.5
+        temperature = round(temperature * 2) / 2
 
         payload = {
             "manualT": temperature,
@@ -129,12 +124,10 @@ class ElkathermClimate(ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set HVAC mode."""
         if hvac_mode == HVACMode.OFF:
-            # Set to manual with antifrost temp (5°C)
             payload = {"manualT": 5, "manuelnaT": 5, "mode": HVAC_MANUAL}
         elif hvac_mode == HVACMode.AUTO:
             payload = {"mode": HVAC_PROGRAM}
         elif hvac_mode == HVACMode.HEAT:
-            # Stay in manual mode, keep current temp
             current = self._attr_target_temperature or 15
             payload = {"manualT": current, "manuelnaT": current, "mode": HVAC_MANUAL}
         else:

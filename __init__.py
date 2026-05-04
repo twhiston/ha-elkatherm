@@ -6,14 +6,13 @@ from typing import Any
 
 import paho.mqtt.client as mqtt
 import requests
-import ssl
 import json
 import time
 import threading
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryNotReady
 
 from .const import (
@@ -62,7 +61,6 @@ class ElkathermCoordinator:
         self._token: str | None = None
         self._devices: list[dict] = []
         self._mqtt_client: mqtt.Client | None = None
-        self._lock = threading.Lock()
         self._running = False
         self._device_states: dict[str, dict] = {}
         self._listeners: list[callable] = []
@@ -123,10 +121,10 @@ class ElkathermCoordinator:
             self._listeners.remove(callback)
 
     def _notify_listeners(self, mac: str, state: dict) -> None:
-        """Notify all listeners of a state update."""
+        """Notify all listeners of a state update (called from MQTT thread)."""
         for cb in self._listeners:
             try:
-                cb(mac, state)
+                self.hass.loop.call_soon_threadsafe(cb, mac, state)
             except Exception:
                 _LOGGER.exception("Listener error")
 
@@ -138,16 +136,23 @@ class ElkathermCoordinator:
         """Called when MQTT connects."""
         _LOGGER.info("MQTT connected with rc=%s", rc)
         if rc == 0:
-            # Subscribe to status topics for all devices
             for device in self._devices:
                 mac = device["mac"]
-                topic = f"{mac}/{device['deviceID']}"
-                client.subscribe(topic)
-                _LOGGER.debug("Subscribed to %s", topic)
+                uid = device["deviceID"]
+                client.subscribe(f"{mac}/{uid}")
+                client.subscribe(f"{mac}/{uid}/program")
+                client.subscribe(f"+/+/{mac}/{uid}")
+                client.subscribe(f"+/+/{mac}/{uid}/program")
+                client.subscribe(f"+/+/{mac}/{uid}/actuators")
+                
+                # Request current status by publishing {} to UUID/MAC
+                client.publish(f"{uid}/{mac}", "{}")
+
 
     def _on_mqtt_message(self, client, userdata, msg):
         """Called when an MQTT message arrives."""
         try:
+            _LOGGER.info("MQTT message on %s: %s", msg.topic, msg.payload[:200])
             payload = json.loads(msg.payload)
             parts = msg.topic.split("/")
             if len(parts) == 2:
@@ -155,7 +160,8 @@ class ElkathermCoordinator:
                 self._device_states[mac] = payload
                 self._notify_listeners(mac, payload)
         except Exception as err:
-            _LOGGER.warning("Failed to process MQTT message: %s", err)
+            _LOGGER.warning("Failed to process MQTT message on %s: %s", msg.topic, err)
+
 
     def _mqtt_loop(self):
         """Run the MQTT client loop (in a thread)."""
@@ -186,10 +192,14 @@ class ElkathermCoordinator:
                 protocol=mqtt.MQTTv311,
             )
             client.ws_set_options(path=MQTT_PATH)
-            client.tls_set()
             client.username_pw_set(self._email, self._token)
             client.on_connect = self._on_mqtt_connect
             client.on_message = self._on_mqtt_message
+
+            def _setup_tls():
+                client.tls_set()
+
+            await self.hass.async_add_executor_job(_setup_tls)
 
             def _connect():
                 client.connect(MQTT_HOST, MQTT_PORT, 30)
@@ -199,7 +209,6 @@ class ElkathermCoordinator:
             self._mqtt_client = client
             self._running = True
 
-            # Start the loop in a daemon thread
             thread = threading.Thread(target=self._mqtt_loop, daemon=True)
             thread.start()
 
@@ -210,6 +219,7 @@ class ElkathermCoordinator:
             _LOGGER.error("MQTT connection failed: %s", err)
             return False
 
+
     def publish_command(self, mac: str, payload: dict) -> None:
         """Publish a command to a device."""
         device_id = self.get_device_id(mac)
@@ -217,9 +227,10 @@ class ElkathermCoordinator:
             _LOGGER.warning("Cannot publish: device %s not found", mac)
             return
 
-        topic = f"{device_id}/{mac}"
+        topic = f"{device_id}/{mac}"  # REVERSED!
         self._mqtt_client.publish(topic, json.dumps(payload))
         _LOGGER.debug("Published to %s: %s", topic, payload)
+
 
     def stop(self):
         """Stop the coordinator."""
