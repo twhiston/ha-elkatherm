@@ -69,9 +69,11 @@ class ElkathermCoordinator:
 
     def _do_login(self) -> dict:
         """Log in and return the response."""
+        body = f"Username={self._email}&Password={self._password}"
         resp = requests.post(
             LOGIN_URL,
-            data={"Username": self._email, "Password": self._password},
+            data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
             timeout=15,
         )
         resp.raise_for_status()

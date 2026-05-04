@@ -51,9 +51,11 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
 def _do_login(email: str, password: str) -> dict:
     """Perform the login request."""
+    body = f"Username={email}&Password={password}"
     resp = requests.post(
         LOGIN_URL,
-        data={"Username": email, "Password": password},
+        data=body,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=15,
     )
     resp.raise_for_status()
