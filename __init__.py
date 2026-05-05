@@ -199,6 +199,13 @@ class ElkathermCoordinator:
 
         return await self.async_connect_mqtt()
 
+    def _on_mqtt_disconnect(self, client, userdata, rc):
+        """Called when MQTT disconnects."""
+        if rc != 0:
+            _LOGGER.warning("MQTT disconnected unexpectedly (rc=%s). Will auto-reconnect.", rc)
+        else:
+            _LOGGER.info("MQTT disconnected cleanly")
+
     async def async_connect_mqtt(self) -> bool:
         """Connect to the MQTT broker."""
         if self._token is None:
@@ -214,6 +221,10 @@ class ElkathermCoordinator:
             client.username_pw_set(self._email, self._token)
             client.on_connect = self._on_mqtt_connect
             client.on_message = self._on_mqtt_message
+            client.on_disconnect = self._on_mqtt_disconnect
+
+            # Enable automatic reconnect
+            client.reconnect_delay_set(min_delay=1, max_delay=60)
 
             def _setup_tls():
                 client.tls_set()
@@ -237,6 +248,7 @@ class ElkathermCoordinator:
         except Exception as err:
             _LOGGER.error("MQTT connection failed: %s", err)
             return False
+
 
 
     def publish_command(self, mac: str, payload: dict) -> None:
