@@ -20,6 +20,15 @@ from .const import DOMAIN, MANUFACTURER, HVAC_MANUAL, HVAC_PROGRAM
 
 _LOGGER = logging.getLogger(__name__)
 
+ATTR_WIFI_SIGNAL = "wifi_signal"
+ATTR_HYSTERESIS = "hysteresis"
+ATTR_CALIBRATION = "calibration"
+ATTR_ECO_TEMP = "eco_temperature"
+ATTR_COMFORT_TEMP = "comfort_temperature"
+ATTR_FROST_PROTECTION = "frost_protection"
+ATTR_KEYPAD_LOCK = "keypad_locked"
+ATTR_ADAPTIVE_START = "adaptive_start"
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -78,6 +87,9 @@ class ElkathermClimate(ClimateEntity):
         self._attr_hvac_mode: HVACMode = HVACMode.HEAT
         self._attr_hvac_action: HVACAction = HVACAction.IDLE
 
+        # Extra attributes
+        self._attr_extra_state_attributes = {}
+
         coordinator.register_listener(self._handle_state_update)
 
     @callback
@@ -102,6 +114,18 @@ class ElkathermClimate(ClimateEntity):
 
         heating = state.get("heating", 0)
         self._attr_hvac_action = HVACAction.HEATING if heating else HVACAction.IDLE
+
+        # Update extra attributes
+        self._attr_extra_state_attributes = {
+            ATTR_WIFI_SIGNAL: state.get("wifi"),
+            ATTR_HYSTERESIS: state.get("hys"),
+            ATTR_CALIBRATION: state.get("cal"),
+            ATTR_ECO_TEMP: state.get("eco"),
+            ATTR_COMFORT_TEMP: state.get("com"),
+            ATTR_FROST_PROTECTION: state.get("antifrost"),
+            ATTR_KEYPAD_LOCK: bool(state.get("lock", 0)),
+            ATTR_ADAPTIVE_START: state.get("adaptive"),
+        }
 
         self.async_write_ha_state()
 
@@ -156,3 +180,8 @@ class ElkathermClimate(ClimateEntity):
     def available(self) -> bool:
         """Return if the device is available."""
         return self._state is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the extra state attributes."""
+        return self._attr_extra_state_attributes

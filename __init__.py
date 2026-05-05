@@ -147,6 +147,24 @@ class ElkathermCoordinator:
                 
                 # Request current status by publishing {} to UUID/MAC
                 client.publish(f"{uid}/{mac}", "{}")
+            
+            # Schedule retries for the status request
+            def _retry_status():
+                for device in self._devices:
+                    client.publish(f"{device['deviceID']}/{device['mac']}", "{}")
+            
+            # Retry after 5, 15, and 30 seconds
+            timer = threading.Timer(5.0, _retry_status)
+            timer.daemon = True
+            timer.start()
+            
+            timer2 = threading.Timer(15.0, _retry_status)
+            timer2.daemon = True
+            timer2.start()
+            
+            timer3 = threading.Timer(30.0, _retry_status)
+            timer3.daemon = True
+            timer3.start()
 
 
     def _on_mqtt_message(self, client, userdata, msg):
